@@ -9,8 +9,10 @@ export const MATCH_STATUS = {
 };
 
 // ─── Helpers ───────────────────────────────────────────────────────
-const isoDateString = z.iso.datetime({
-  message: "Must be a valid ISO 8601 datetime string",
+const isoDateString = z
+  .string()
+  .refine((val) => !isNaN(Date.parse(val)), {
+    message: "Must be a valid ISO date string",
   });
 
 const coercedPositiveInt = z.coerce
