@@ -1,4 +1,5 @@
 import { WebSocket, WebSocketServer } from "ws";
+import { wsArcjet } from "../arcjet.js";
 
 // Helper Function Sending JSON object, actually it prevent repetitive JSON.stringify calls and ensure the socket is open before sending
 function sendJson( socket, payload){
@@ -25,7 +26,29 @@ export function attachWebsocketServer(server){
         maxPayload: 1024 * 1024
     });
 
-    wss.on('connection', (socket) => {
+    wss.on('connection', async (socket, req) => {
+
+        if(wsArcjet){
+            
+            try {
+
+                const decision = await wsArcjet.protect(req);
+                
+                if(decision.isDenied()) {
+                   const code = decision.reason.isRateLimit() ? 1013 : 1008;
+                   const reason = decision.reason.isRateLimit() ? 'Rate limit exceeded' : 'Access denied';
+
+                   socket.close(code, reason);
+                   return;
+                }
+
+
+            } catch(e){
+                console.error('Ws connection error', e)
+                socket.close(1011, "Server security error");
+                return;
+            }
+        }
         socket.isAlive = true;
         socket.on('pong', () => { socket.isAlive = true });
 
@@ -36,11 +59,11 @@ export function attachWebsocketServer(server){
 
     const interval = setInterval(() => {
         wss.clients.forEach( (ws) => {
-            if(ws.isAlive === false) return ws.terminate();
+            if (ws.isAlive === false) return ws.terminate();
+
             ws.isAlive = false;
             ws.ping();
-        });
-    }, 30000);
+        })}, 30000);
 
     wss.on('close', () => clearInterval(interval));
 
