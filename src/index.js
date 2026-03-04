@@ -13,12 +13,13 @@ const server = http.createServer(app);
 /* The Middleware To read Json Context  */
 app.use(express.json());
 
+app.use(securityMiddleware());
+
 // Root Route 
 app.get('/', (req, res) =>{
     res.send('Hello from express server!');
 });
 
-app.use(securityMiddleware());
 
 app.use('/matches', matchRouter);
 
