@@ -38,9 +38,8 @@ commentaryRouter.get("/", async (req, res) => {
   try {
     const match = await db
       .select()
-      .from(commentary)
-      .where(eq(commentary.matchId, matchId))
-      .orderBy(desc(commentary.createdAt)) 
+      .from(matches)
+      .where(eq(matches.id, matchId))
       .limit(limit);
 
     if (!match.length) {
@@ -57,8 +56,11 @@ commentaryRouter.get("/", async (req, res) => {
       .limit(limit);
 
     res.json({ data });
+
   } catch (e) {
+
   console.error("GET /commentary error:", e);
+  
   res.status(500).json({
     error:   "Failed to list commentary.",
     details: JSON.stringify(e, Object.getOwnPropertyNames(e)),
@@ -106,14 +108,15 @@ commentaryRouter.post("/", async (req, res) => {
       .returning();
 
     if(res.app.locals.broadcastCommentary){
-        res.app.locals.broadcastCommentary(result.matchId, result);
+        res.app.locals.broadcastCommentary(Number(result.matchId), result);
     }  
 
     res.status(201).json({ data: result });
   } catch (e) {
+    console.error("POST /commentary error:", e); // 👈 add
     res.status(500).json({
       error:   "Failed to create commentary event.",
-      details: JSON.stringify(e),
+      details: JSON.stringify(e, Object.getOwnPropertyNames(e)),
     });
   }
 });

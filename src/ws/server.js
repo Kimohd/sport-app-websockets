@@ -1,6 +1,5 @@
 import { WebSocket, WebSocketServer } from "ws";
 import { wsArcjet } from "../arcjet.js";
-import { map } from "zod";
 
 const matchSubscribers = new Map();
 
@@ -27,8 +26,10 @@ function unsubscribe(matchId, socket){
 
 function cleanupSubscriptions(socket){
     for(const matchId of socket.subscriptions){
-        unsubscribe(matchId, socket);
+    unsubscribe(Number(matchId), socket);   // 👈 ensure consistent key type
     }
+    
+    socket.subscriptions.clear(); 
 }
 
 // Helper Function Sending JSON object, actually it prevent repetitive JSON.stringify calls and ensure the socket is open before sending
@@ -49,15 +50,25 @@ function broadcastToAll(wss, payload){
 }
 
 function broadcastToMatch(matchId, payload){
+    console.log("📡 broadcastToMatch called with matchId:", matchId, typeof matchId);
+    console.log("🗺️  Map keys:", [...matchSubscribers.keys()].map(k => `${k} (${typeof k})`));
+    console.log("👥 subscribers:", matchSubscribers.get(matchId)?.size ?? 0);
+
     const subscribers = matchSubscribers.get(matchId);
 
     if(!subscribers || subscribers.size === 0) return;
 
     const message = JSON.stringify(payload);
 
-    for(const client of subscribers){
-        if(client.readyState === WebSocket.OPEN){
-            client.send(message);
+    for (const client of subscribers) {
+        if (!client) {             // 👈 skip undefined
+        subscribers.delete(client);
+        continue;
+        }
+        if (client.readyState === WebSocket.OPEN) {
+        client.send(message);
+        } else {
+        subscribers.delete(client);  // 👈 clean up stale sockets
         }
     }
 }
@@ -67,14 +78,23 @@ function handleMessage(socket, data){
 
     try{
         message= JSON.parse(data.toString());
+        console.log("📨 raw message received:", message);  // 👈 add 
 
     } catch {
         sendJson(socket, {type: 'error', massage: 'invalid JSON'});
+        return;              // 👈 add return
+
     }
 
+      console.log("🔍 type:", message?.type, "| matchId:", message?.matchId, "| isInt:", Number.isInteger(message?.matchId)); // 👈 add
+
+
     if (message ?.type === 'subscribe' && Number.isInteger(message.matchId)){
-        subscribe(message.matchId, socket);
-        socket.subscriptions.add(message.matchId);
+        subscribe(Number(message.matchId), socket);
+        socket.subscriptions.add(Number(message.matchId));
+        
+        console.log("✅ subscribed. Map keys:", [...matchSubscribers.keys()]); // 👈 add
+
         sendJson(socket, {type:'subscribed', matchId: message.matchId});
         return;
     }
@@ -98,6 +118,15 @@ export function attachWebsocketServer(server){
 
     wss.on('connection', async (socket, req) => {
 
+         // ✅ set up handler immediately — before any await
+        socket.subscriptions = new Set();
+        socket.isAlive = true;
+
+        socket.on('pong', () => { socket.isAlive = true });
+        socket.on('message', (data) => { handleMessage(socket, data) });
+        socket.on('error', () => { socket.terminate() });
+        socket.on('close', () => { cleanupSubscriptions(socket) });
+
         if(wsArcjet){
             
             try {
@@ -119,26 +148,26 @@ export function attachWebsocketServer(server){
                 return;
             }
         }
-        socket.isAlive = true;
-        socket.on('pong', () => { socket.isAlive = true });
+        //socket.isAlive = true;
+        //socket.on('pong', () => { socket.isAlive = true });
 
-        socket.subscriptions = new Set();
+        //socket.subscriptions = new Set();
 
-        sendJson(socket, { type:'Welcome' });
+        sendJson(socket, { type:'welcome' });
 
-        socket.on('message', (data) => {
-            handleMessage(socket, data);
-        });
+        //socket.on('message', (data) => {
+            //handleMessage(socket, data);
+        //});
 
-        socket.on('error', ()=>{
-            socket.terminate();
-        });
+        //socket.on('error', ()=>{
+           // socket.terminate();
+        //});
 
-        socket.on('close', ()=>{
-            cleanupSubscriptions(socket);
-        })
+        //socket.on('close', ()=>{
+           // cleanupSubscriptions(socket);
+       // })
 
-        socket.on('error', console.error);
+        //socket.on('error', console.error);
     });
 
     const interval = setInterval(() => {
